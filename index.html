@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JSON / Text Reader</title>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css" />
+  <script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -92,7 +94,8 @@
       cursor: pointer;
       transition: background 0.2s;
     }
-    button:hover { background: #005fa3; }
+    button:hover:not(:disabled) { background: #005fa3; }
+    button:disabled { background: #90b8d4; cursor: default; }
 
     #status {
       font-size: 0.82rem;
@@ -143,7 +146,7 @@
         </select>
       </div>
 
-      <button id="read-btn">Read JSON</button>
+      <button id="read-btn" disabled>Loading Python...</button>
     </div>
 
     <span id="status"></span>
@@ -154,157 +157,158 @@
     </div>
   </div>
 
+  <!-- Sliders are pure DOM — no need for Python -->
   <script>
-    const inputEl   = document.getElementById('input');
-    const outputEl  = document.getElementById('output');
-    const wrapSlider = document.getElementById('wrap-slider');
-    const fontSlider = document.getElementById('font-slider');
-    const valWrap   = document.getElementById('val-wrap');
-    const valFont   = document.getElementById('val-font');
-    const langSel   = document.getElementById('lang-select');
-    const readBtn   = document.getElementById('read-btn');
-    const statusEl  = document.getElementById('status');
-
-    // Live slider labels
-    wrapSlider.addEventListener('input', () => valWrap.textContent = wrapSlider.value);
-    fontSlider.addEventListener('input', () => {
-      const sz = fontSlider.value + 'px';
-      valFont.textContent = fontSlider.value;
-      inputEl.style.fontSize = sz;
-      outputEl.style.fontSize = sz;
+    document.getElementById('wrap-slider').addEventListener('input', function () {
+      document.getElementById('val-wrap').textContent = this.value;
     });
-
-    // --- Format logic (mirrors Python) ---
-    function wrapText(text, width, indent) {
-      if (width <= 0) return text;
-      const subsequent = indent + '  ';
-      const lines = text.split('\n');
-      const result = [];
-      for (const line of lines) {
-        if (line.length === 0) { result.push(''); continue; }
-        const words = line.split(' ');
-        let current = '';
-        let first = true;
-        for (const word of words) {
-          const prefix = first ? indent : subsequent;
-          if (!current) {
-            current = prefix + word;
-          } else if ((current + ' ' + word).length <= width) {
-            current += ' ' + word;
-          } else {
-            result.push(current);
-            current = subsequent + word;
-            first = false;
-          }
-        }
-        if (current) result.push(current);
-        first = false;
-      }
-      return result.join('\n');
-    }
-
-    function formatValue(value, indent, wrapWidth) {
-      const pad = '  '.repeat(indent);
-      if (value === null)   return 'null';
-      if (typeof value === 'boolean') return String(value);
-      if (typeof value === 'number')  return String(value);
-      if (typeof value === 'string') {
-        let text = value
-          .replace(/\\n/g, '\n')
-          .replace(/\\t/g, '\t')
-          .replace(/\\r/g, '');
-        return wrapText(text, wrapWidth, pad);
-      }
-      if (Array.isArray(value)) {
-        const lines = [];
-        for (const item of value) {
-          if (typeof item === 'object' && item !== null) {
-            lines.push(formatValue(item, indent, wrapWidth));
-            lines.push('');
-          } else {
-            lines.push(`${pad}- ${formatValue(item, indent, wrapWidth)}`);
-          }
-        }
-        return lines.join('\n').replace(/\n+$/, '');
-      }
-      if (typeof value === 'object') {
-        const lines = [];
-        for (const [k, v] of Object.entries(value)) {
-          if (typeof v === 'object' && v !== null) {
-            lines.push(`${pad}${k}:`);
-            lines.push(formatValue(v, indent + 1, wrapWidth));
-          } else {
-            lines.push(`${pad}${k}: ${formatValue(v, indent, wrapWidth)}`);
-          }
-        }
-        return lines.join('\n');
-      }
-      return String(value);
-    }
-
-    // --- Translation via MyMemory (free, no key) ---
-    // Uses the same unofficial Google Translate endpoint as the `translators` Python library
-    async function translateText(text, targetLang) {
-      if (!targetLang || !text.trim()) return text;
-      const url = 'https://translate.googleapis.com/translate_a/single'
-        + `?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-      try {
-        const res = await fetch(url);
-        const json = await res.json();
-        // Response is nested arrays: [[["translated","original",...],...],...]
-        return json[0].map(part => part[0]).join('');
-      } catch {
-        return text;
-      }
-    }
-
-    async function translateFormatted(value, wrapWidth, targetLang) {
-      // Translate leaf strings, then format
-      async function translateValue(v) {
-        if (typeof v === 'string') return await translateText(v, targetLang);
-        if (Array.isArray(v))     return await Promise.all(v.map(translateValue));
-        if (typeof v === 'object' && v !== null) {
-          const out = {};
-          for (const [k, val] of Object.entries(v)) out[k] = await translateValue(val);
-          return out;
-        }
-        return v;
-      }
-      const translated = targetLang ? await translateValue(value) : value;
-      return formatValue(translated, 0, wrapWidth);
-    }
-
-    // --- Button handler ---
-    readBtn.addEventListener('click', async () => {
-      const raw = inputEl.value.trim();
-      if (!raw) { outputEl.value = 'Please paste a JSON string or plain text first.'; return; }
-
-      const wrapWidth = parseInt(wrapSlider.value, 10);
-      const targetLang = langSel.value;
-
-      let data;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        data = raw; // treat as plain string
-      }
-
-      readBtn.disabled = true;
-      statusEl.textContent = targetLang ? 'Translating...' : 'Formatting...';
-
-      try {
-        const formatted = await translateFormatted(data, wrapWidth, targetLang);
-        const sepStart = '='.repeat(40) + ' START ' + '='.repeat(40);
-        const sepEnd   = '='.repeat(41) + ' END '   + '='.repeat(41);
-        outputEl.value = `${sepStart}\n${formatted}\n${sepEnd}`;
-        statusEl.textContent = '';
-      } catch (e) {
-        outputEl.value = `Error: ${e.message}`;
-        statusEl.textContent = '';
-      } finally {
-        readBtn.disabled = false;
-      }
+    document.getElementById('font-slider').addEventListener('input', function () {
+      document.getElementById('val-font').textContent = this.value;
+      const sz = this.value + 'px';
+      document.getElementById('input').style.fontSize = sz;
+      document.getElementById('output').style.fontSize = sz;
     });
+  </script>
+
+  <!-- Python runs in the browser via Pyodide (PyScript) -->
+  <script type="py">
+import json
+import re
+import textwrap
+import urllib.parse
+import js
+from pyscript import document, when
+
+GT_LIMIT = 4800  # safe chunk size for Google Translate unofficial endpoint
+
+# ── Translation ──────────────────────────────────────────────────────────────
+
+async def _translate_chunk(chunk, target_lang):
+    encoded = urllib.parse.quote(chunk)
+    url = (
+        "https://translate.googleapis.com/translate_a/single"
+        f"?client=gtx&sl=auto&tl={target_lang}&dt=t&q={encoded}"
+    )
+    response = await js.fetch(url)
+    text = await response.text()
+    data = json.loads(text)
+    return "".join(part[0] for part in data[0])
+
+async def translate_text(text, target_lang):
+    if not target_lang or not text.strip():
+        return text
+    try:
+        if len(text) <= GT_LIMIT:
+            return await _translate_chunk(text, target_lang)
+        # Split on sentence boundaries, fall back to hard split
+        sentences = re.findall(r'[^.!?\n]+[.!?\n]*', text) or [text]
+        chunks, current = [], ''
+        for s in sentences:
+            if len(current) + len(s) > GT_LIMIT:
+                if current:
+                    chunks.append(current)
+                if len(s) > GT_LIMIT:
+                    for i in range(0, len(s), GT_LIMIT):
+                        chunks.append(s[i:i + GT_LIMIT])
+                    current = ''
+                else:
+                    current = s
+            else:
+                current += s
+        if current:
+            chunks.append(current)
+        parts = []
+        for c in chunks:
+            parts.append(await _translate_chunk(c, target_lang))
+        return ''.join(parts)
+    except Exception:
+        return text
+
+async def translate_value(value, target_lang):
+    if isinstance(value, str):
+        return await translate_text(value, target_lang)
+    if isinstance(value, list):
+        return [await translate_value(item, target_lang) for item in value]
+    if isinstance(value, dict):
+        return {k: await translate_value(v, target_lang) for k, v in value.items()}
+    return value
+
+# ── Formatting ────────────────────────────────────────────────────────────────
+
+def format_value(value, indent=0, wrap_width=80):
+    pad = "  " * indent
+    if isinstance(value, dict):
+        lines = []
+        for k, v in value.items():
+            if isinstance(v, (dict, list)):
+                lines.append(f"{pad}{k}:")
+                lines.append(format_value(v, indent + 1, wrap_width))
+            else:
+                lines.append(f"{pad}{k}: {format_value(v, indent, wrap_width)}")
+        return "\n".join(lines)
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(format_value(item, indent, wrap_width))
+                lines.append("")
+            else:
+                lines.append(f"{pad}- {format_value(item, indent, wrap_width)}")
+        return "\n".join(lines).rstrip()
+    if isinstance(value, str):
+        text = value.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "")
+        if wrap_width > 0:
+            wrapped = []
+            for line in text.splitlines():
+                wrapped.extend(
+                    textwrap.wrap(line, width=wrap_width, subsequent_indent=pad + "  ") or [""]
+                )
+            return "\n".join(wrapped)
+        return text
+    return str(value)
+
+# ── Button handler ────────────────────────────────────────────────────────────
+
+@when("click", "#read-btn")
+async def on_read(event):
+    raw        = document.getElementById("input").value.strip()
+    output_el  = document.getElementById("output")
+    status_el  = document.getElementById("status")
+    read_btn   = document.getElementById("read-btn")
+
+    if not raw:
+        output_el.value = "Please paste a JSON string or plain text first."
+        return
+
+    wrap_width  = int(document.getElementById("wrap-slider").value)
+    target_lang = document.getElementById("lang-select").value or None
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        data = raw  # treat as plain string
+
+    read_btn.disabled = True
+    status_el.textContent = "Translating..." if target_lang else "Formatting..."
+
+    try:
+        if target_lang:
+            data = await translate_value(data, target_lang)
+        formatted = format_value(data, wrap_width=wrap_width)
+        sep_start = "=" * 40 + " START " + "=" * 40
+        sep_end   = "=" * 41 + " END "   + "=" * 41
+        output_el.value = f"{sep_start}\n{formatted}\n{sep_end}"
+        status_el.textContent = ""
+    except Exception as e:
+        output_el.value = f"Error: {e}"
+        status_el.textContent = ""
+    finally:
+        read_btn.disabled = False
+
+# ── Ready ─────────────────────────────────────────────────────────────────────
+read_btn = document.getElementById("read-btn")
+read_btn.textContent = "Read JSON"
+read_btn.disabled = False
   </script>
 </body>
 </html>
