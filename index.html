@@ -142,7 +142,6 @@
         </select>
       </div>
 
-      <button id="read-btn" disabled>Loading Python...</button>
     </div>
 
     <span id="status"></span>
@@ -153,10 +152,11 @@
     </div>
   </div>
 
-  <!-- Sliders are pure DOM — no need for Python -->
   <script>
+    // Font/wrap sliders — instant visual update
     document.getElementById('wrap-slider').addEventListener('input', function () {
       document.getElementById('val-wrap').textContent = this.value;
+      triggerRead();
     });
     document.getElementById('font-slider').addEventListener('input', function () {
       document.getElementById('val-font').textContent = this.value;
@@ -164,6 +164,17 @@
       document.getElementById('input').style.fontSize = sz;
       document.getElementById('output').style.fontSize = sz;
     });
+    document.getElementById('lang-select').addEventListener('change', triggerRead);
+
+    // Debounce: wait 400ms after the user stops typing before processing
+    let _debounceTimer = null;
+    function triggerRead() {
+      clearTimeout(_debounceTimer);
+      _debounceTimer = setTimeout(() => {
+        if (window._pyReadReady) window._pyReadReady();
+      }, 400);
+    }
+    document.getElementById('input').addEventListener('input', triggerRead);
   </script>
 
   <!-- Python runs in the browser via Pyodide (PyScript) -->
@@ -263,17 +274,15 @@ def format_value(value, indent=0, wrap_width=80):
         return text
     return str(value)
 
-# ── Button handler ────────────────────────────────────────────────────────────
+# ── Handler ───────────────────────────────────────────────────────────────────
 
-@when("click", "#read-btn")
-async def on_read(event):
-    raw        = document.getElementById("input").value.strip()
-    output_el  = document.getElementById("output")
-    status_el  = document.getElementById("status")
-    read_btn   = document.getElementById("read-btn")
+async def on_read():
+    raw       = document.getElementById("input").value.strip()
+    output_el = document.getElementById("output")
+    status_el = document.getElementById("status")
 
     if not raw:
-        output_el.value = "Please paste a JSON string or plain text first."
+        output_el.value = ""
         return
 
     wrap_width  = int(document.getElementById("wrap-slider").value)
@@ -284,7 +293,6 @@ async def on_read(event):
     except json.JSONDecodeError:
         data = raw  # treat as plain string
 
-    read_btn.disabled = True
     status_el.textContent = "Translating..." if target_lang else "Formatting..."
 
     try:
@@ -298,13 +306,13 @@ async def on_read(event):
     except Exception as e:
         output_el.value = f"Error: {e}"
         status_el.textContent = ""
-    finally:
-        read_btn.disabled = False
 
-# ── Ready ─────────────────────────────────────────────────────────────────────
-read_btn = document.getElementById("read-btn")
-read_btn.textContent = "Read JSON"
-read_btn.disabled = False
+# ── Ready — expose handler to JS debounce ─────────────────────────────────────
+import asyncio
+def _js_trigger():
+    asyncio.ensure_future(on_read())
+
+js.window._pyReadReady = _js_trigger
   </script>
 </body>
 </html>
