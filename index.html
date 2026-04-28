@@ -243,13 +243,44 @@
     }
 
     // --- Translation via MyMemory (free, no key) ---
+    async function translateChunk(chunk, targetLang) {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=auto|${targetLang}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      const out = json.responseData?.translatedText ?? chunk;
+      // MyMemory echoes "QUERY LENGTH LIMIT EXCEEDED" as the translation on failure
+      return out.includes('QUERY LENGTH LIMIT EXCEEDED') ? chunk : out;
+    }
+
     async function translateText(text, targetLang) {
       if (!targetLang || !text.trim()) return text;
-      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`;
+      const LIMIT = 480; // stay safely under the 500-char API limit
+      if (text.length <= LIMIT) {
+        try { return await translateChunk(text, targetLang); } catch { return text; }
+      }
+      // Split on sentence boundaries where possible, otherwise hard-split
+      const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) ?? [text];
+      const chunks = [];
+      let current = '';
+      for (const sentence of sentences) {
+        if (current.length + sentence.length > LIMIT) {
+          if (current) chunks.push(current);
+          // If a single sentence exceeds the limit, hard-split it
+          if (sentence.length > LIMIT) {
+            for (let i = 0; i < sentence.length; i += LIMIT)
+              chunks.push(sentence.slice(i, i + LIMIT));
+            current = '';
+          } else {
+            current = sentence;
+          }
+        } else {
+          current += sentence;
+        }
+      }
+      if (current) chunks.push(current);
       try {
-        const res = await fetch(url);
-        const json = await res.json();
-        return json.responseData?.translatedText ?? text;
+        const translated = await Promise.all(chunks.map(c => translateChunk(c, targetLang)));
+        return translated.join('');
       } catch {
         return text;
       }
