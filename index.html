@@ -222,6 +222,26 @@
       font-size: 0.85rem;
       padding: 32px 16px;
     }
+
+    /* ── Table toggle ── */
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #table-btn {
+      display: none;
+      background: #fff;
+      color: #0078d4;
+      border: 1.5px solid #0078d4;
+      padding: 4px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #table-btn:hover { background: #e8f2fb; }
+    #table-btn.active { background: #0078d4; color: #fff; }
   </style>
 </head>
 <body>
@@ -274,7 +294,10 @@
     <span id="status"></span>
 
     <div>
-      <label for="output">Output</label>
+      <div class="output-header">
+        <label for="output">Output</label>
+        <button id="table-btn">Table View</button>
+      </div>
       <textarea id="output" rows="22" readonly></textarea>
     </div>
   </div>
@@ -445,6 +468,41 @@
 
     // Initial render (loads badge count from localStorage)
     renderHistory('');
+
+    /* ── Table toggle ── */
+    let _normalOutput = '';
+    let _tableOutput  = null;
+    let _showingTable = false;
+
+    window.setOutputs = function(normalText, tableText) {
+      _normalOutput = normalText;
+      _tableOutput  = tableText;
+      _showingTable = false;
+      document.getElementById('output').value = normalText;
+      const btn = document.getElementById('table-btn');
+      if (tableText !== null) {
+        btn.style.display = 'inline-block';
+        btn.textContent = 'Table View';
+        btn.classList.remove('active');
+      } else {
+        btn.style.display = 'none';
+      }
+    };
+
+    document.getElementById('table-btn').addEventListener('click', function () {
+      const out = document.getElementById('output');
+      if (_showingTable) {
+        out.value = _normalOutput;
+        this.textContent = 'Table View';
+        this.classList.remove('active');
+        _showingTable = false;
+      } else {
+        out.value = _tableOutput;
+        this.textContent = 'Normal View';
+        this.classList.add('active');
+        _showingTable = true;
+      }
+    });
   </script>
 
   <!-- Python runs in the browser via Pyodide (PyScript) -->
@@ -543,6 +601,27 @@ def format_value(value, indent=0, wrap_width=80):
         return text
     return str(value)
 
+# ── Table detection & generation ─────────────────────────────────────────────
+
+def is_table_data(data):
+    """True if data is a non-empty list of dicts that all share the same keys."""
+    if not isinstance(data, list) or len(data) == 0:
+        return False
+    if not isinstance(data[0], dict):
+        return False
+    keys = list(data[0].keys())
+    return all(isinstance(row, dict) and list(row.keys()) == keys for row in data)
+
+def to_markdown_table(data):
+    keys = list(data[0].keys())
+    col_widths = [max(len(str(k)), max((len(str(row.get(k, ""))) for row in data), default=0)) for k in keys]
+    def fmt_row(cells):
+        return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_widths)) + " |"
+    header    = fmt_row(keys)
+    separator = "| " + " | ".join("-" * w for w in col_widths) + " |"
+    rows      = [fmt_row([row.get(k, "") for k in keys]) for row in data]
+    return "\n".join([header, separator] + rows)
+
 # ── Handler ───────────────────────────────────────────────────────────────────
 
 async def on_read():
@@ -566,13 +645,20 @@ async def on_read():
     status_el.textContent = "Translating..." if target_lang else "Formatting..."
 
     try:
+        # Detect table format before translation (structure is the same after)
+        table_possible = is_table_data(data)
+
         if target_lang:
             data = await translate_value(data, target_lang)
+
         formatted = format_value(data, wrap_width=wrap_width)
         sep_start = "=" * 40 + " START " + "=" * 40
         sep_end   = "=" * 41 + " END "   + "=" * 41
         output_text = f"{sep_start}\n{formatted}\n{sep_end}"
-        output_el.value = output_text
+
+        table_text = to_markdown_table(data) if table_possible else None
+
+        js.window.setOutputs(output_text, table_text)
         status_el.textContent = ""
         # Save to history
         js.window.addToHistory(raw, output_text, wrap_width, font_size, target_lang or "")
