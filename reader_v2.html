@@ -607,6 +607,10 @@
 
     // ── JSON parsing ──────────────────────────────────────────────────────────
 
+    function repairMissingCommas(s) {
+      return s.replace(/(["\d]|true|false|null)(\s*\n\s*)(")/g, '$1,$2$3');
+    }
+
     function tryParseJSON(raw) {
       const s = raw.trim();
       try { return { data: JSON.parse(s) }; } catch (_) {}
@@ -616,10 +620,12 @@
         try { return { data: JSON.parse(inner) }; } catch (_) {}
         const u1 = inner.replace(/""/g, '"');
         try { return { data: JSON.parse(u1) }; } catch (_) {}
+        try { return { data: JSON.parse(repairMissingCommas(u1)) }; } catch (_) {}
       }
 
       const u2 = s.replace(/""/g, '"');
       try { return { data: JSON.parse(u2) }; } catch (_) {}
+      try { return { data: JSON.parse(repairMissingCommas(u2)) }; } catch (_) {}
 
       return { data: null };
     }
@@ -951,13 +957,21 @@ def try_parse_table(s):
             pass
     return None
 
+def _repair_missing_commas(s):
+    """Insert commas missing between consecutive JSON properties/values."""
+    return re.sub(r'(["\d]|true|false|null)(\s*\n\s*)(")', r'\1,\2\3', s)
+
 def _parse_candidates(s):
     yield s
     if s.startswith('"') and s.endswith('"'):
         inner = s[1:-1]
         yield inner
-        yield inner.replace('""', '"')
-    yield s.replace('""', '"')
+        unescaped = inner.replace('""', '"')
+        yield unescaped
+        yield _repair_missing_commas(unescaped)
+    unescaped2 = s.replace('""', '"')
+    yield unescaped2
+    yield _repair_missing_commas(unescaped2)
 
 # ── Bracket matching (mirrors JS findMatchingBracket) ─────────────────────────
 
