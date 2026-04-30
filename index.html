@@ -652,9 +652,7 @@ async def on_read():
             data = await translate_value(data, target_lang)
 
         formatted = format_value(data, wrap_width=wrap_width)
-        sep_start = "=" * 40 + " START " + "=" * 40
-        sep_end   = "=" * 41 + " END "   + "=" * 41
-        output_text = f"{sep_start}\n{formatted}\n{sep_end}"
+        output_text = formatted
 
         table_text = to_markdown_table(data) if table_possible else None
 
