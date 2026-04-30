@@ -8,31 +8,51 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    html, body { height: 100%; }
+
     body {
       font-family: system-ui, sans-serif;
       background: #f0f2f5;
       color: #1a1a1a;
-      min-height: 100vh;
-      padding: 24px 12px;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
     }
 
     h1 {
       font-size: 1.6rem;
       font-weight: 700;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
       color: #0078d4;
       text-align: center;
+      flex-shrink: 0;
     }
 
+    /* ── Width slider (above card) ── */
+    .width-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+    .width-ctrl label { margin: 0; white-space: nowrap; font-size: 0.82rem; font-weight: 600; color: #555; }
+    #width-slider { width: 180px; accent-color: #0078d4; cursor: pointer; }
+    #width-val { font-size: 0.82rem; color: #555; min-width: 38px; }
+
+    /* ── Card ── */
     .card {
       background: #fff;
       border-radius: 10px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.10);
       padding: 24px;
-      width: 100%;
+      flex: 1;
       display: flex;
       flex-direction: column;
       gap: 16px;
+      min-height: 0;
+      width: 100%;
+      margin: 0 auto;
     }
 
     label { font-size: 0.85rem; font-weight: 600; color: #444; display: block; margin-bottom: 4px; }
@@ -49,55 +69,33 @@
       transition: border-color 0.2s;
     }
     textarea:focus { border-color: #0078d4; }
-    #output { background: #f8f8f8; color: #222; min-height: 200px; }
 
+    /* ── Controls row ── */
     .controls {
       display: flex;
       flex-wrap: wrap;
-      gap: 20px;
+      gap: 16px;
       align-items: center;
+      flex-shrink: 0;
     }
 
-    .ctrl-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
+    .ctrl-group { display: flex; align-items: center; gap: 8px; }
     .ctrl-group label { margin: 0; white-space: nowrap; }
 
-    input[type=range] { width: 160px; accent-color: #0078d4; cursor: pointer; }
+    input[type=range] { width: 140px; accent-color: #0078d4; cursor: pointer; }
 
     select {
       border: 1px solid #d0d0d0;
       border-radius: 6px;
       padding: 5px 8px;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       outline: none;
       cursor: pointer;
+      background: #fff;
     }
+    select:focus { border-color: #0078d4; }
 
     #val-wrap, #val-font { font-size: 0.82rem; color: #555; min-width: 28px; text-align: center; }
-
-    button {
-      background: #0078d4;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 8px 22px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    button:hover:not(:disabled) { background: #005fa3; }
-    button:disabled { background: #90b8d4; cursor: default; }
-
-    #status {
-      font-size: 0.82rem;
-      color: #888;
-      min-height: 1.2em;
-    }
 
     /* ── History button ── */
     #history-btn {
@@ -107,9 +105,13 @@
       border: 1.5px solid #0078d4;
       padding: 6px 14px;
       font-size: 0.88rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 6px;
+      transition: background 0.2s;
     }
     #history-btn:hover { background: #e8f2fb; }
     #history-badge {
@@ -123,22 +125,142 @@
     }
     #history-badge.visible { display: inline-block; }
 
-    /* ── Drawer overlay ── */
-    #drawer-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 999;
+    #status { font-size: 0.82rem; color: #888; min-height: 1.2em; flex-shrink: 0; }
+
+    /* ── Output area ── */
+    .output-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
+
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .output-header > label { margin: 0; }
+
+    .view-btns { display: flex; gap: 6px; }
+    .view-btn {
+      background: #fff;
+      color: #0078d4;
+      border: 1.5px solid #0078d4;
+      padding: 4px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: none;
+    }
+    .view-btn.show  { display: inline-block; }
+    .view-btn:hover { background: #e8f2fb; }
+    .view-btn.active { background: #0078d4; color: #fff; }
+
+    /* Formatted text view — same visual container as #table-container */
+    #output {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: auto;
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      padding: 20px 16px;
+      background: #f8f8f8;
+      color: #222;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #output.hidden { display: none; }
+
+    /* ── Table/segments container ── */
+    #table-container {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      min-height: 0;
+      padding: 20px 16px;
+      flex-direction: column;
+      gap: 36px;
+    }
+    #table-container.visible { display: flex; }
+
+    /* ── Prose segment ── */
+    .seg-prose {
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    /* ── Table segment ── */
+    .seg-table-wrap {
+      overflow-x: auto;
+      border-radius: 6px;
+      border: 1px solid #d8d8d8;
+    }
+
+    .seg-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+      table-layout: auto;
+    }
+
+    .seg-table th {
+      background: #0078d4;
+      color: #fff;
+      padding: 8px 12px;
+      text-align: left;
+      white-space: nowrap;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .seg-table td {
+      padding: 7px 12px;
+      border-bottom: 1px solid #e8e8e8;
+      vertical-align: top;
+    }
+    .seg-table tr:last-child td  { border-bottom: none; }
+    .seg-table tr:nth-child(even) td { background: #f8fafc; }
+    .seg-table tr:hover td { background: #e8f2fb; }
+
+    .seg-table th.narrow,
+    .seg-table td.narrow { white-space: nowrap; width: 1%; }
+
+    .seg-table th.num { text-align: right; }
+    .seg-table td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: "Courier New", monospace !important; /* always monospace for numbers */
+    }
+    .seg-table td.num.neg { color: #c0392b; }
+
+    .seg-table td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+    .seg-table td.url a { color: #0078d4; text-decoration: none; }
+    .seg-table td.url a:hover { text-decoration: underline; }
+
+    /* ── History drawer overlay ── */
+    #drawer-overlay { display: none; position: fixed; inset: 0; z-index: 999; }
     #drawer-overlay.open { display: block; }
 
-    /* ── Drawer ── */
+    /* ── History drawer ── */
     #history-drawer {
       position: fixed;
-      top: 0;
-      right: -280px;
-      width: 260px;
-      height: 100vh;
+      top: 0; right: -280px;
+      width: 260px; height: 100vh;
       background: #f0f2f5;
       border-left: 0.5px solid #c8c8c8;
       z-index: 1000;
@@ -172,11 +294,7 @@
     }
     #history-search:focus { border-color: #0078d4; }
 
-    #history-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 4px 0;
-    }
+    #history-list { flex: 1; overflow-y: auto; padding: 4px 0; }
 
     .history-entry {
       padding: 10px 14px;
@@ -184,7 +302,7 @@
       border-bottom: 1px solid #e8e8e8;
       transition: background 0.15s;
     }
-    .history-entry:hover { background: #e4eef7; }
+    .history-entry:hover  { background: #e4eef7; }
     .history-entry.active { background: #dceefb; }
 
     .entry-top {
@@ -194,78 +312,55 @@
       gap: 6px;
       margin-bottom: 3px;
     }
-    .entry-input-preview {
-      font-size: 0.82rem;
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1;
-    }
-    .entry-time {
-      font-size: 0.72rem;
-      color: #999;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .entry-output-preview {
-      font-size: 0.75rem;
-      color: #888;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    .entry-input-preview  { font-size: 0.82rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+    .entry-time           { font-size: 0.72rem; color: #999; white-space: nowrap; flex-shrink: 0; }
+    .entry-output-preview { font-size: 0.75rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    #drawer-empty {
-      text-align: center;
-      color: #aaa;
-      font-size: 0.85rem;
-      padding: 32px 16px;
-    }
-
-    /* ── Table toggle ── */
-    .output-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    #table-btn {
-      display: none;
-      background: #fff;
-      color: #0078d4;
-      border: 1.5px solid #0078d4;
-      padding: 4px 12px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    #table-btn:hover { background: #e8f2fb; }
-    #table-btn.active { background: #0078d4; color: #fff; }
+    #drawer-empty { text-align: center; color: #aaa; font-size: 0.85rem; padding: 32px 16px; }
   </style>
 </head>
 <body>
   <h1>JSON / Text Reader</h1>
 
+  <div class="width-ctrl">
+    <label for="width-slider">Width:</label>
+    <input type="range" id="width-slider" min="20" max="100" step="1" value="100" />
+    <span id="width-val">100%</span>
+  </div>
+
   <div class="card">
-    <div>
+
+    <div style="flex-shrink:0">
       <label for="input">Input (JSON or plain text)</label>
-      <textarea id="input" rows="14" placeholder="Paste your JSON or plain text here..."></textarea>
+      <textarea id="input" rows="12" placeholder="Paste your JSON or plain text here..."></textarea>
     </div>
 
     <div class="controls">
+      <!-- Wrap width -->
       <div class="ctrl-group">
-        <label for="wrap-slider">Wrap width:</label>
+        <label for="wrap-slider">Wrap:</label>
         <input type="range" id="wrap-slider" min="20" max="200" step="10" value="80" />
         <span id="val-wrap">80</span>
       </div>
 
+      <!-- Font size -->
       <div class="ctrl-group">
-        <label for="font-slider">Font size:</label>
+        <label for="font-slider">Size:</label>
         <input type="range" id="font-slider" min="8" max="32" step="1" value="13" />
         <span id="val-font">13</span>
       </div>
 
+      <!-- Font family -->
+      <div class="ctrl-group">
+        <label for="font-family-select">Font:</label>
+        <select id="font-family-select">
+          <option value="sans">Sans-serif</option>
+          <option value="serif">Serif</option>
+          <option value="mono">Monospace</option>
+        </select>
+      </div>
+
+      <!-- Translation -->
       <div class="ctrl-group">
         <label for="lang-select">Translate to:</label>
         <select id="lang-select">
@@ -286,6 +381,7 @@
         </select>
       </div>
 
+      <!-- History -->
       <button id="history-btn">
         History <span id="history-badge"></span>
       </button>
@@ -293,16 +389,25 @@
 
     <span id="status"></span>
 
-    <div>
+    <div class="output-wrapper">
       <div class="output-header">
-        <label for="output">Output</label>
-        <button id="table-btn">Table View</button>
+        <label>Output</label>
+        <div class="view-btns">
+          <button class="view-btn" id="btn-formatted-view">Formatted Text</button>
+          <button class="view-btn" id="btn-table-view">Table View</button>
+        </div>
       </div>
-      <textarea id="output" rows="22" readonly></textarea>
+
+      <!-- Formatted / plain-text view -->
+      <div id="output"></div>
+
+      <!-- Table view: prose + table segments rendered dynamically -->
+      <div id="table-container"></div>
     </div>
+
   </div>
 
-  <!-- Drawer overlay (click-outside-to-close) -->
+  <!-- Drawer overlay (click outside to close) -->
   <div id="drawer-overlay"></div>
 
   <!-- History drawer -->
@@ -318,20 +423,51 @@
   </div>
 
   <script>
-    /* ── Sliders ── */
+    // ── Sliders ───────────────────────────────────────────────────────────────
+
     document.getElementById('wrap-slider').addEventListener('input', function () {
       document.getElementById('val-wrap').textContent = this.value;
       triggerRead();
     });
+
     document.getElementById('font-slider').addEventListener('input', function () {
       document.getElementById('val-font').textContent = this.value;
       const sz = this.value + 'px';
-      document.getElementById('input').style.fontSize = sz;
-      document.getElementById('output').style.fontSize = sz;
+      document.getElementById('input').style.fontSize          = sz;
+      document.getElementById('output').style.fontSize         = sz;
+      document.getElementById('table-container').style.fontSize = sz;
     });
+
     document.getElementById('lang-select').addEventListener('change', triggerRead);
 
-    /* ── Debounced auto-read ── */
+    // ── Font family picker ────────────────────────────────────────────────────
+
+    const FONTS = {
+      sans:  'system-ui, Arial, sans-serif',
+      serif: 'Georgia, "Times New Roman", serif',
+      mono:  '"Courier New", Courier, monospace',
+    };
+
+    function applyFont(key) {
+      const font = FONTS[key] || FONTS.sans;
+      document.getElementById('output').style.fontFamily          = font;
+      document.getElementById('table-container').style.fontFamily = font;
+    }
+
+    document.getElementById('font-family-select').addEventListener('change', function () {
+      applyFont(this.value);
+    });
+
+    // ── Width slider ──────────────────────────────────────────────────────────
+
+    document.getElementById('width-slider').addEventListener('input', function () {
+      const pct = Number(this.value);
+      document.getElementById('width-val').textContent = pct + '%';
+      document.querySelector('.card').style.maxWidth = pct === 100 ? '' : pct + '%';
+    });
+
+    // ── Debounced auto-read ───────────────────────────────────────────────────
+
     let _debounceTimer = null;
     function triggerRead() {
       clearTimeout(_debounceTimer);
@@ -341,7 +477,23 @@
     }
     document.getElementById('input').addEventListener('input', triggerRead);
 
-    /* ── History ── */
+    // ── View switching ────────────────────────────────────────────────────────
+
+    let _view = 'formatted';
+
+    function setView(view) {
+      _view = view;
+      document.getElementById('output').classList.toggle('hidden', view !== 'formatted');
+      document.getElementById('table-container').classList.toggle('visible', view === 'table');
+      document.getElementById('btn-formatted-view').classList.toggle('active', view === 'formatted');
+      document.getElementById('btn-table-view').classList.toggle('active', view === 'table');
+    }
+
+    document.getElementById('btn-formatted-view').addEventListener('click', () => setView('formatted'));
+    document.getElementById('btn-table-view').addEventListener('click',     () => setView('table'));
+
+    // ── History ───────────────────────────────────────────────────────────────
+
     const STORAGE_KEY = 'json_reader_history';
     const MAX_ENTRIES = 10;
 
@@ -356,19 +508,18 @@
 
     function relativeTime(isoStr) {
       const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
-      if (diff < 60)   return 'now';
-      if (diff < 3600) return Math.floor(diff / 60) + 'm';
+      if (diff < 60)    return 'now';
+      if (diff < 3600)  return Math.floor(diff / 60) + 'm';
       if (diff < 86400) return Math.floor(diff / 3600) + 'h';
       return Math.floor(diff / 86400) + 'd';
     }
 
     function renderHistory(filter) {
-      const history = loadHistory();
-      const list    = document.getElementById('history-list');
-      const empty   = document.getElementById('drawer-empty');
-      const badge   = document.getElementById('history-badge');
-      const count   = document.getElementById('drawer-entry-count');
-
+      const history  = loadHistory();
+      const list     = document.getElementById('history-list');
+      const empty    = document.getElementById('drawer-empty');
+      const badge    = document.getElementById('history-badge');
+      const count    = document.getElementById('drawer-entry-count');
       const filtered = filter
         ? history.filter(e => e.input.toLowerCase().includes(filter.toLowerCase()))
         : history;
@@ -377,13 +528,9 @@
       badge.classList.toggle('visible', history.length > 0);
       count.textContent = history.length === 1 ? '1 entry' : `${history.length} entries`;
 
-      // Remove old entries (keep the empty placeholder)
       list.querySelectorAll('.history-entry').forEach(el => el.remove());
 
-      if (filtered.length === 0) {
-        empty.style.display = 'block';
-        return;
-      }
+      if (filtered.length === 0) { empty.style.display = 'block'; return; }
       empty.style.display = 'none';
 
       filtered.forEach((entry, idx) => {
@@ -405,9 +552,8 @@
       return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    window.addToHistory = function(input, output, wrapWidth, fontSize, lang) {
+    window.addToHistory = function (input, output, wrapWidth, fontSize, lang) {
       let history = loadHistory();
-      // Skip duplicate of most recent entry
       if (history.length > 0 && history[0].input === input) {
         history[0].output    = output;
         history[0].timestamp = new Date().toISOString();
@@ -416,7 +562,7 @@
         history.unshift({
           input, output,
           timestamp: new Date().toISOString(),
-          settings: { wrapWidth, fontSize, lang }
+          settings: { wrapWidth, fontSize, lang },
         });
         if (history.length > MAX_ENTRIES) history.pop();
       }
@@ -425,11 +571,9 @@
     };
 
     function restoreEntry(entry) {
-      // Restore input
-      document.getElementById('input').value = entry.input;
-      // Restore output
-      document.getElementById('output').value = entry.output;
-      // Restore settings
+      document.getElementById('input').value  = entry.input;
+      document.getElementById('output').textContent = entry.output;
+
       const ws = document.getElementById('wrap-slider');
       ws.value = entry.settings.wrapWidth;
       document.getElementById('val-wrap').textContent = entry.settings.wrapWidth;
@@ -443,66 +587,302 @@
 
       document.getElementById('lang-select').value = entry.settings.lang;
 
+      // Reset view until re-render
+      ['btn-formatted-view','btn-table-view'].forEach(id =>
+        document.getElementById(id).classList.remove('show','active'));
+
       closeDrawer();
+      triggerRead();
     }
 
-    /* ── Drawer open/close ── */
-    function openDrawer()  {
-      document.getElementById('history-drawer').classList.add('open');
-      document.getElementById('drawer-overlay').classList.add('open');
-    }
-    function closeDrawer() {
-      document.getElementById('history-drawer').classList.remove('open');
-      document.getElementById('drawer-overlay').classList.remove('open');
-    }
-    function toggleDrawer() {
-      document.getElementById('history-drawer').classList.contains('open')
-        ? closeDrawer() : openDrawer();
-    }
+    function openDrawer()   { document.getElementById('history-drawer').classList.add('open'); document.getElementById('drawer-overlay').classList.add('open'); }
+    function closeDrawer()  { document.getElementById('history-drawer').classList.remove('open'); document.getElementById('drawer-overlay').classList.remove('open'); }
+    function toggleDrawer() { document.getElementById('history-drawer').classList.contains('open') ? closeDrawer() : openDrawer(); }
 
     document.getElementById('history-btn').addEventListener('click', toggleDrawer);
     document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
-    document.getElementById('history-search').addEventListener('input', function () {
-      renderHistory(this.value);
-    });
+    document.getElementById('history-search').addEventListener('input', function () { renderHistory(this.value); });
 
-    // Initial render (loads badge count from localStorage)
     renderHistory('');
 
-    /* ── Table toggle ── */
-    let _normalOutput = '';
-    let _tableOutput  = null;
-    let _showingTable = false;
+    // ── JS Translation (used for table segments) ──────────────────────────────
 
-    window.setOutputs = function(normalText, tableText) {
-      _normalOutput = normalText;
-      _tableOutput  = tableText;
-      _showingTable = false;
-      document.getElementById('output').value = normalText;
-      const btn = document.getElementById('table-btn');
-      if (tableText != null) {
-        btn.style.display = 'inline-block';
-        btn.textContent = 'Table View';
-        btn.classList.remove('active');
+    const GT_LIMIT = 4800;
+
+    async function translateChunk(chunk, lang) {
+      const url = 'https://translate.googleapis.com/translate_a/single'
+        + `?client=gtx&sl=auto&tl=${lang}&dt=t&q=${encodeURIComponent(chunk)}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+      return data[0].map(p => p[0]).join('');
+    }
+
+    async function translateText(text, lang) {
+      if (!lang || !text.trim()) return text;
+      try {
+        if (text.length <= GT_LIMIT) return await translateChunk(text, lang);
+        const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+        const chunks = [];
+        let cur = '';
+        for (const s of sentences) {
+          if (cur.length + s.length > GT_LIMIT) {
+            if (cur) chunks.push(cur);
+            if (s.length > GT_LIMIT) {
+              for (let i = 0; i < s.length; i += GT_LIMIT) chunks.push(s.slice(i, i + GT_LIMIT));
+              cur = '';
+            } else { cur = s; }
+          } else { cur += s; }
+        }
+        if (cur) chunks.push(cur);
+        const parts = await Promise.all(chunks.map(c => translateChunk(c, lang)));
+        return parts.join('');
+      } catch { return text; }
+    }
+
+    async function translateTableData(data, lang) {
+      const keys   = Object.keys(data[0]);
+      const types  = classifyColumns(data);
+      const result = data.map(row => ({ ...row }));
+      for (const k of keys) {
+        if (types[k] !== 'text') continue;
+        for (const row of result) {
+          if (typeof row[k] === 'string' && row[k].trim())
+            row[k] = await translateText(row[k], lang);
+        }
+      }
+      return result;
+    }
+
+    async function translateSegments(segments, lang) {
+      return Promise.all(segments.map(async seg => {
+        if (seg.type === 'text')
+          return { type: 'text', content: await translateText(seg.content, lang) };
+        return { type: 'table', data: await translateTableData(seg.data, lang) };
+      }));
+    }
+
+    // ── JSON parsing ──────────────────────────────────────────────────────────
+
+    function tryParseJSON(raw) {
+      const s = raw.trim();
+      try { return { data: JSON.parse(s) }; } catch (_) {}
+
+      if (s.startsWith('"') && s.endsWith('"')) {
+        const inner = s.slice(1, -1);
+        try { return { data: JSON.parse(inner) }; } catch (_) {}
+        const u1 = inner.replace(/""/g, '"');
+        try { return { data: JSON.parse(u1) }; } catch (_) {}
+      }
+
+      const u2 = s.replace(/""/g, '"');
+      try { return { data: JSON.parse(u2) }; } catch (_) {}
+
+      return { data: null };
+    }
+
+    // ── Table detection ───────────────────────────────────────────────────────
+
+    function isTableData(data) {
+      if (!Array.isArray(data) || data.length === 0) return false;
+      if (typeof data[0] !== 'object' || data[0] === null || Array.isArray(data[0])) return false;
+      return data.every(row => typeof row === 'object' && row !== null && !Array.isArray(row));
+    }
+
+    // ── Column classification ─────────────────────────────────────────────────
+
+    const URL_RE = /^https?:\/\//i;
+
+    function classifyColumns(data) {
+      const keys  = Object.keys(data[0]);
+      const types = {};
+      keys.forEach(k => {
+        const vals = data.map(r => r[k]).filter(v => v !== null && v !== undefined && v !== '');
+        if (vals.length === 0) { types[k] = 'text'; return; }
+        const numCount = vals.filter(v =>
+          typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)))
+        ).length;
+        if (numCount / vals.length >= 0.8) { types[k] = 'numeric'; return; }
+        const urlCount = vals.filter(v => URL_RE.test(String(v))).length;
+        if (urlCount / vals.length >= 0.5) { types[k] = 'url'; return; }
+        types[k] = 'text';
+      });
+      return types;
+    }
+
+    // ── Bracket matching ──────────────────────────────────────────────────────
+
+    function findMatchingBracket(s, start) {
+      let depth = 0, inString = false;
+      for (let i = start; i < s.length; i++) {
+        const c = s[i];
+        if (inString) {
+          if (c === '\\') { i++; continue; }
+          if (c === '"') {
+            if (s[i + 1] === '"') { i++; continue; } // CSV double-quote escape
+            inString = false;
+          }
+        } else {
+          if      (c === '"') inString = true;
+          else if (c === '[') depth++;
+          else if (c === ']') { if (--depth === 0) return i; }
+        }
+      }
+      return -1;
+    }
+
+    // ── Segment extraction ────────────────────────────────────────────────────
+
+    function extractAllSegments(raw) {
+      const s      = raw.trim();
+      const blocks = [];
+      let i = 0;
+
+      while (i < s.length) {
+        if (s[i] !== '[') { i++; continue; }
+        const bracketPos = i;
+        const end        = findMatchingBracket(s, bracketPos);
+        if (end === -1) { i++; continue; }
+
+        const preQuote   = bracketPos > 0 && s[bracketPos - 1] === '"';
+        const postQuote  = preQuote && end < s.length - 1 && s[end + 1] === '"';
+        const blockStart = preQuote  ? bracketPos - 1 : bracketPos;
+        const blockEnd   = postQuote ? end + 1        : end;
+        const { data }   = tryParseJSON(s.slice(blockStart, blockEnd + 1));
+
+        if (data && isTableData(data)) {
+          const prev = blocks[blocks.length - 1];
+          if (!prev || blockStart > prev.end) {
+            blocks.push({ start: blockStart, end: blockEnd, data });
+            i = blockEnd + 1;
+            continue;
+          }
+        }
+        i++;
+      }
+
+      if (blocks.length === 0) return null;
+
+      const segments = [];
+      let pos = 0;
+      for (const block of blocks) {
+        const textBefore = s.slice(pos, block.start).trim();
+        if (textBefore) segments.push({ type: 'text', content: textBefore });
+        segments.push({ type: 'table', data: block.data });
+        pos = block.end + 1;
+      }
+      const textAfter = s.slice(pos).trim();
+      if (textAfter) segments.push({ type: 'text', content: textAfter });
+      return segments;
+    }
+
+    // ── HTML rendering ────────────────────────────────────────────────────────
+
+    function buildTableElement(data) {
+      const keys  = Object.keys(data[0]);
+      const types = classifyColumns(data);
+      const table = document.createElement('table');
+      table.className = 'seg-table';
+
+      const thead = table.createTHead();
+      const hrow  = thead.insertRow();
+      keys.forEach(k => {
+        const th = document.createElement('th');
+        th.textContent = k;
+        if (types[k] === 'numeric') th.classList.add('narrow', 'num');
+        if (types[k] === 'url')     th.classList.add('narrow');
+        hrow.appendChild(th);
+      });
+
+      const tbody = table.createTBody();
+      data.forEach(row => {
+        const tr = tbody.insertRow();
+        keys.forEach(k => {
+          const td  = tr.insertCell();
+          const val = row[k] ?? '';
+          const t   = types[k];
+
+          if (t === 'numeric') {
+            td.textContent = val;
+            td.classList.add('narrow', 'num');
+            if (!isNaN(Number(val)) && Number(val) < 0) td.classList.add('neg');
+
+          } else if (t === 'url') {
+            const a = document.createElement('a');
+            a.href = String(val); a.textContent = String(val);
+            a.target = '_blank';  a.rel = 'noopener noreferrer';
+            td.appendChild(a);
+            td.classList.add('narrow', 'url');
+
+          } else {
+            td.textContent = val;
+          }
+        });
+      });
+      return table;
+    }
+
+    function buildHTMLOutput(segments) {
+      const container = document.getElementById('table-container');
+      container.innerHTML = '';
+      segments.forEach(seg => {
+        if (seg.type === 'text') {
+          const div = document.createElement('div');
+          div.className = 'seg-prose';
+          div.textContent = seg.content;
+          container.appendChild(div);
+        } else {
+          const wrap = document.createElement('div');
+          wrap.className = 'seg-table-wrap';
+          wrap.appendChild(buildTableElement(seg.data));
+          container.appendChild(wrap);
+        }
+      });
+    }
+
+    // ── setOutputs — called by PyScript after formatting ──────────────────────
+    // raw:       original input string
+    // formatted: PyScript-formatted text (for Formatted Text view)
+    // isTable:   PyScript flagged this as a pure table array
+    // lang:      selected translation language ('' = none)
+
+    window.setOutputs = async function (raw, formatted, isTable, lang) {
+      const statusEl = document.getElementById('status');
+
+      document.getElementById('output').textContent = formatted;
+
+      // Save to history using the formatted text as the preview
+      const wrapWidth = document.getElementById('wrap-slider').value;
+      const fontSize  = document.getElementById('font-slider').value;
+      window.addToHistory(raw, formatted, wrapWidth, fontSize, lang);
+
+      // Apply current font choice to both output areas
+      applyFont(document.getElementById('font-family-select').value);
+
+      // Find segments: try direct table parse first, then mixed-content scan
+      let segments = null;
+      if (isTable) {
+        const { data } = tryParseJSON(raw);
+        if (data && isTableData(data)) segments = [{ type: 'table', data }];
+      }
+      if (!segments) segments = extractAllSegments(raw);
+
+      if (segments) {
+        if (lang) {
+          statusEl.textContent = 'Translating…';
+          try { segments = await translateSegments(segments, lang); }
+          catch (_) { /* show original on failure */ }
+          statusEl.textContent = '';
+        }
+        buildHTMLOutput(segments);
+        document.getElementById('btn-formatted-view').classList.add('show');
+        document.getElementById('btn-table-view').classList.add('show');
+        setView('table');
       } else {
-        btn.style.display = 'none';
+        document.getElementById('btn-formatted-view').classList.add('show');
+        document.getElementById('btn-table-view').classList.remove('show', 'active');
+        setView('formatted');
       }
     };
-
-    document.getElementById('table-btn').addEventListener('click', function () {
-      const out = document.getElementById('output');
-      if (_showingTable) {
-        out.value = _normalOutput;
-        this.textContent = 'Table View';
-        this.classList.remove('active');
-        _showingTable = false;
-      } else {
-        out.value = _tableOutput;
-        this.textContent = 'Normal View';
-        this.classList.add('active');
-        _showingTable = true;
-      }
-    });
   </script>
 
   <!-- Python runs in the browser via Pyodide (PyScript) -->
@@ -512,11 +892,11 @@ import re
 import textwrap
 import urllib.parse
 import js
-from pyscript import document, when
+from pyscript import document
 
-GT_LIMIT = 4800  # safe chunk size for Google Translate unofficial endpoint
+GT_LIMIT = 4800
 
-# ── Translation ──────────────────────────────────────────────────────────────
+# ── Translation (used for non-table text/JSON) ────────────────────────────────
 
 async def _translate_chunk(chunk, target_lang):
     encoded = urllib.parse.quote(chunk)
@@ -601,10 +981,9 @@ def format_value(value, indent=0, wrap_width=80):
         return text
     return str(value)
 
-# ── Table detection & generation ─────────────────────────────────────────────
+# ── Table detection ───────────────────────────────────────────────────────────
 
 def is_table_data(data):
-    """True if data is a non-empty list of dicts that all share the same keys."""
     if not isinstance(data, list) or len(data) == 0:
         return False
     if not isinstance(data[0], dict):
@@ -612,25 +991,16 @@ def is_table_data(data):
     keys = list(data[0].keys())
     return all(isinstance(row, dict) and list(row.keys()) == keys for row in data)
 
-def to_markdown_table(data):
-    keys = list(data[0].keys())
-    col_widths = [max(len(str(k)), max((len(str(row.get(k, ""))) for row in data), default=0)) for k in keys]
-    def fmt_row(cells):
-        return "| " + " | ".join(str(c).ljust(w) for c, w in zip(cells, col_widths)) + " |"
-    header    = fmt_row(keys)
-    separator = "| " + " | ".join("-" * w for w in col_widths) + " |"
-    rows      = [fmt_row([row.get(k, "") for k in keys]) for row in data]
-    return "\n".join([header, separator] + rows)
-
 # ── Handler ───────────────────────────────────────────────────────────────────
 
 async def on_read():
     raw       = document.getElementById("input").value.strip()
-    output_el = document.getElementById("output")
     status_el = document.getElementById("status")
 
     if not raw:
-        output_el.value = ""
+        document.getElementById("output").textContent = ""
+        document.getElementById("btn-formatted-view").classList.remove("show", "active")
+        document.getElementById("btn-table-view").classList.remove("show", "active")
         return
 
     wrap_width  = int(document.getElementById("wrap-slider").value)
@@ -642,30 +1012,33 @@ async def on_read():
     except json.JSONDecodeError:
         data = raw
 
-    status_el.textContent = "Translating..." if target_lang else "Formatting..."
+    table_possible = is_table_data(data)
 
     try:
-        # Detect table format before translation (structure is the same after)
-        table_possible = is_table_data(data)
+        if table_possible:
+            # Table translation is handled by JS — just format for the fallback view
+            status_el.textContent = "Formatting..."
+            formatted = format_value(data, wrap_width=wrap_width)
+            js.window.setOutputs(raw, formatted, True, target_lang or "")
+            # Status will be cleared by JS after any translation
+        else:
+            # Translate and format plain text / nested JSON with PyScript
+            if target_lang:
+                status_el.textContent = "Translating..."
+                data = await translate_value(data, target_lang)
+            else:
+                status_el.textContent = "Formatting..."
+            formatted = format_value(data, wrap_width=wrap_width)
+            js.window.setOutputs(raw, formatted, False, "")
+            status_el.textContent = ""
 
-        if target_lang:
-            data = await translate_value(data, target_lang)
-
-        formatted = format_value(data, wrap_width=wrap_width)
-        output_text = formatted
-
-        table_text = to_markdown_table(data) if table_possible else None
-
-        js.window.setOutputs(output_text, table_text)
-        status_el.textContent = ""
-        # Save to history
-        js.window.addToHistory(raw, output_text, wrap_width, font_size, target_lang or "")
     except Exception as e:
-        output_el.value = f"Error: {e}"
+        document.getElementById("output").textContent = f"Error: {e}"
         status_el.textContent = ""
 
 # ── Ready — expose handler to JS debounce ────────────────────────────────────
 import asyncio
+
 def _js_trigger():
     asyncio.ensure_future(on_read())
 
