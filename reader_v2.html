@@ -784,11 +784,12 @@
     }
 
     // ── setOutputs — called by PyScript after formatting + translation ─────────
-    // raw:            original input string (untranslated)
-    // formatted:      PyScript-formatted text, already translated if requested
-    // translatedJSON: JSON.stringify of translated table data, or "" if not a table
+    // raw:          original input string (untranslated)
+    // formatted:    PyScript-formatted text, already translated if requested
+    // segmentsJSON: JSON.stringify of [{type,content|data}, ...] already translated,
+    //               or "" if no tables were found
 
-    window.setOutputs = function (raw, formatted, translatedJSON) {
+    window.setOutputs = function (raw, formatted, segmentsJSON) {
       document.getElementById('output').textContent = formatted;
 
       // Save to history
@@ -800,11 +801,13 @@
       // Apply current font choice to both output areas
       applyFont(document.getElementById('font-family-select').value);
 
-      // Build segments: use pre-translated JSON for pure tables, else scan raw for mixed content
+      // Use pre-translated segments from Python if available, else fall back to raw scan
       let segments = null;
-      if (translatedJSON) {
-        const { data } = tryParseJSON(translatedJSON);
-        if (data && isTableData(data)) segments = [{ type: 'table', data }];
+      if (segmentsJSON) {
+        try {
+          const parsed = JSON.parse(segmentsJSON);
+          if (Array.isArray(parsed) && parsed.length > 0) segments = parsed;
+        } catch (_) {}
       }
       if (!segments) segments = extractAllSegments(raw);
 
@@ -832,7 +835,7 @@ from pyscript import document
 
 GT_LIMIT = 4800
 
-# ── Translation (handles all content — plain text, dicts, arrays) ────────────
+# ── Translation ───────────────────────────────────────────────────────────────
 
 async def _translate_chunk(chunk, target_lang):
     encoded = urllib.parse.quote(chunk)
@@ -875,12 +878,19 @@ async def translate_text(text, target_lang):
         return text
 
 async def translate_value(value, target_lang):
+    """Recursively translate all string values in a Python object."""
     if isinstance(value, str):
         return await translate_text(value, target_lang)
     if isinstance(value, list):
-        return [await translate_value(item, target_lang) for item in value]
+        result = []
+        for item in value:
+            result.append(await translate_value(item, target_lang))
+        return result
     if isinstance(value, dict):
-        return {k: await translate_value(v, target_lang) for k, v in value.items()}
+        result = {}
+        for k, v in value.items():
+            result[k] = await translate_value(v, target_lang)
+        return result
     return value
 
 # ── Formatting ────────────────────────────────────────────────────────────────
@@ -927,6 +937,116 @@ def is_table_data(data):
     keys = list(data[0].keys())
     return all(isinstance(row, dict) and list(row.keys()) == keys for row in data)
 
+# ── JSON parsing (mirrors JS tryParseJSON — handles quoted + double-escaped) ──
+
+def try_parse_table(s):
+    """Try multiple strategies to parse s as a JSON array of objects."""
+    s = s.strip()
+    for candidate in _parse_candidates(s):
+        try:
+            data = json.loads(candidate)
+            if is_table_data(data):
+                return data
+        except Exception:
+            pass
+    return None
+
+def _parse_candidates(s):
+    yield s
+    if s.startswith('"') and s.endswith('"'):
+        inner = s[1:-1]
+        yield inner
+        yield inner.replace('""', '"')
+    yield s.replace('""', '"')
+
+# ── Bracket matching (mirrors JS findMatchingBracket) ─────────────────────────
+
+def _find_matching_bracket(s, start):
+    depth, in_string, i = 0, False, start
+    while i < len(s):
+        c = s[i]
+        if in_string:
+            if c == '\\':
+                i += 2
+                continue
+            if c == '"':
+                if i + 1 < len(s) and s[i + 1] == '"':  # CSV double-quote escape
+                    i += 2
+                    continue
+                in_string = False
+        else:
+            if   c == '"': in_string = True
+            elif c == '[': depth += 1
+            elif c == ']':
+                depth -= 1
+                if depth == 0:
+                    return i
+        i += 1
+    return -1
+
+# ── Segment extraction (mirrors JS extractAllSegments) ───────────────────────
+
+def extract_all_segments(raw):
+    """
+    Returns a list of {'type': 'text'|'table', 'content'|'data': ...}
+    or None if no tables are found.
+    """
+    s = raw.strip()
+    blocks = []
+    i = 0
+
+    while i < len(s):
+        if s[i] != '[':
+            i += 1
+            continue
+        bracket_pos = i
+        end = _find_matching_bracket(s, bracket_pos)
+        if end == -1:
+            i += 1
+            continue
+
+        pre_quote  = bracket_pos > 0 and s[bracket_pos - 1] == '"'
+        post_quote = pre_quote and end < len(s) - 1 and s[end + 1] == '"'
+        block_start = bracket_pos - 1 if pre_quote else bracket_pos
+        block_end   = end + 1         if post_quote else end
+
+        chunk = s[block_start:block_end + 1]
+        data  = try_parse_table(chunk)
+
+        if data is not None:
+            if not blocks or block_start > blocks[-1]['end']:
+                blocks.append({'start': block_start, 'end': block_end, 'data': data})
+                i = block_end + 1
+                continue
+        i += 1
+
+    if not blocks:
+        return None
+
+    segments = []
+    pos = 0
+    for block in blocks:
+        text_before = s[pos:block['start']].strip()
+        if text_before:
+            segments.append({'type': 'text', 'content': text_before})
+        segments.append({'type': 'table', 'data': block['data']})
+        pos = block['end'] + 1
+    text_after = s[pos:].strip()
+    if text_after:
+        segments.append({'type': 'text', 'content': text_after})
+    return segments
+
+# ── Segment translation ───────────────────────────────────────────────────────
+
+async def translate_segments(segments, target_lang):
+    result = []
+    for seg in segments:
+        if seg['type'] == 'text':
+            result.append({'type': 'text', 'content': await translate_text(seg['content'], target_lang)})
+        else:
+            result.append({'type': 'table', 'data': await translate_value(seg['data'], target_lang)})
+    return result
+
 # ── Handler ───────────────────────────────────────────────────────────────────
 
 async def on_read():
@@ -940,27 +1060,35 @@ async def on_read():
         return
 
     wrap_width  = int(document.getElementById("wrap-slider").value)
-    font_size   = int(document.getElementById("font-slider").value)
     target_lang = document.getElementById("lang-select").value or None
 
+    # Parse for the formatted-text view
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         data = raw
 
-    table_possible = is_table_data(data)
+    # Extract segments (handles pure table, mixed content, quoted/escaped variants)
+    segments = extract_all_segments(raw)
 
     try:
-        if target_lang:
-            status_el.textContent = "Translating..."
-            data = await translate_value(data, target_lang)
+        status_el.textContent = "Translating..." if target_lang else "Formatting..."
 
-        status_el.textContent = "Formatting..."
+        if target_lang:
+            # Translate segments (prose text + every table cell)
+            if segments is not None:
+                segments = await translate_segments(segments, target_lang)
+            # Translate data for the formatted-text view
+            # (skip if data is a raw string containing embedded JSON — translating
+            #  the whole string can corrupt the JSON brackets; table view handles it)
+            if not isinstance(data, str):
+                data = await translate_value(data, target_lang)
+
         formatted = format_value(data, wrap_width=wrap_width)
 
-        # For pure table arrays, pass the (possibly translated) JSON so JS can render it
-        translated_json = json.dumps(data) if table_possible else ""
-        js.window.setOutputs(raw, formatted, translated_json)
+        # Pass translated segments to JS as JSON; empty string means "no tables"
+        segments_json = json.dumps(segments) if segments is not None else ""
+        js.window.setOutputs(raw, formatted, segments_json)
         status_el.textContent = ""
 
     except Exception as e:
